@@ -23,13 +23,11 @@ public:
 	{
 		Registers.resize(32);
 		Registers[0] = bitset<32>(0);
-		for(unsigned i=0;i<32;++i)
-			Registers[i] = bitset<32>(1);
 	}
 
 	void ReadWrite(bitset<5> RdReg1, bitset<5> RdReg2, bitset<5> WrtReg, bitset<32> WrtData, bitset<1> WrtEnable)
 	{
-		// implement the funciton by you.
+	     // implement the funciton by you.
 		ReadData1 = Registers[RdReg1.to_ulong()];
 		ReadData2 = Registers[RdReg2.to_ulong()];
 		if (WrtEnable.to_ulong()) Registers[WrtReg.to_ulong()] = WrtData;
@@ -158,10 +156,11 @@ public:
 			}
 		}
 
-		if (writemem.to_ulong()) 
+		if (writemem.to_ulong()) {
 			for (unsigned i = 0; i < 4; ++i) 
                         	for (unsigned j = 0; j < 8; ++j)
-				DMem[Address.to_ulong() + i][j] = WriteData[8 * i + j];
+				DMem[Address.to_ulong() + i][7 - j] = WriteData[31-(8 * i + j)];
+		}
 
 		return readdata;
 	}
@@ -192,7 +191,7 @@ int main()
 	INSMem myInsMem;
 	DataMem myDataMem;
 	bitset < 32 > addressExample = 0; bitset < 32 > insExample = 0;
-	unsigned int opcode = 0;
+	bitset<6> opcode = 0;
 	while (1)
 	{
 		// Fetch
@@ -201,34 +200,101 @@ int main()
 		// If current insturciton is "11111111111111111111111111111111", then break;
 		if (insExample.to_ulong() == 4294967295) break;
 		// decode(Read RF)
-		opcode = insExample.to_ulong() & 0xFC000000;
+		opcode = (insExample.to_ulong() & 0xFC000000)>>26;
 		cout<<"instrcution is "<<insExample<<endl<<"opcode is "<<opcode<<endl;
 
-		switch (opcode){
+		switch (opcode.to_ulong()){
 		case 0:
 		{
 			bitset<3> func = insExample.to_ulong() & 0x7;
 			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
 			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
-			cout<<myRF.Registers[rs.to_ulong()]<<"     "<<myRF.Registers[rt.to_ulong()]<<endl;
+			bitset<5> rd = (insExample.to_ulong() & 0x0000F800)>>11;
 			myALU.ALUOperation(func, myRF.Registers[rs.to_ulong()], myRF.Registers[rt.to_ulong()]);
-			cout<<"ALUresult is "<<myALU.ALUresult<<endl<<"function code is "<<func.to_ulong()
-			    <<" ,rs is "<<rs.to_ulong()<<" ,rt is "<<rt.to_ulong();
+			cout<<"It's R type and function code is "<<func.to_ulong()
+			    <<" ,rs is "<<rs.to_ulong()
+                <<" ,rt is "<<rt.to_ulong()
+			    <<" ,rd is "<< rd.to_ulong()<<endl;
+
+			myRF.Registers[rd.to_ulong()] = myALU.ALUresult;
+
+			cout<<"Result is "<<myALU.ALUresult.to_ulong()<<endl;
 			break;
 		}
+		case 9:
+		{
+			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
+			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
+			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
+			bitset<32> exImm = 0;
+			if (imm[15])
+				exImm = imm.to_ulong() + 0x11110000;
+			else
+				exImm = imm.to_ulong() ;
+
+			myRF.Registers[rt.to_ulong()] = myRF.Registers[rs.to_ulong()].to_ulong() + exImm.to_ulong();
+			break;
+		}
+		case 4:
+		{
+			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
+			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
+			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
+			bitset<32> exImm = 0;
+			exImm = imm.to_ulong();
+			if(rs==rt)
+				addressExample = addressExample.to_ulong() + 4 + exImm.to_ulong();
+			break;
+		}
+		case 2:
+		{
+			bitset<26> imm = insExample.to_ulong() & 0x03FFFFFF;
+			bitset<32> exImm = (addressExample.to_ulong() + 4) & 0xF0000000;		
+			           exImm = exImm.to_ulong() + (imm<<2).to_ulong();
+			addressExample = exImm;			
+			break;
+		}	
+		case 35:
+		{
+			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
+			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
+			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
+			bitset<32> exImm = 0;
+			if (imm[15])
+				exImm = imm.to_ulong() + 0x11110000;
+			else
+				exImm = imm.to_ulong() ;
+			myRF.Registers[rt.to_ulong()] = myDataMem.MemoryAccess(myRF.Registers[rs.to_ulong()].to_ulong() + 
+									       exImm.to_ulong(), 0, 1, 0);
+			break;
+		}
+		case 43:
+		{
+			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
+			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
+			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
+			bitset<32> exImm = 0;
+			if (imm[15])
+				exImm = imm.to_ulong() + 0x11110000;
+			else
+				exImm = imm.to_ulong() ;
+			cout<<myRF.Registers[rs.to_ulong()].to_ulong()<<"    "<<exImm.to_ulong()<<"    "<<myRF.Registers[rt.to_ulong()].to_ulong()<<endl;
+			myDataMem.MemoryAccess(myRF.Registers[rs.to_ulong()].to_ulong() + exImm.to_ulong(), 
+								   myRF.Registers[rt.to_ulong()].to_ulong(), 0, 1) ;
+			break;
+		}		
 
 		default: break;
+		
 		}
 		// Execute
 
 		// Read/Write Mem
 
 		// Write back to RF
-		bitset<5> rd = (insExample.to_ulong() & 0x0000F800)>>11;
-		cout<<" ,rd is "<< rd.to_ulong()<<endl;
-		myRF.Registers[rd.to_ulong()] = myALU.ALUresult;
-		cout<<"Result in register "<<rd.to_ulong()<<" is "<<myALU.ALUresult.to_ulong()<<endl;
-		myRF.OutputRF(); // dump RF;    
+
+		myRF.OutputRF(); // dump RF; 
+		cout << endl;   
 	}
 	myDataMem.OutputDataMem(); // dump data mem
 
