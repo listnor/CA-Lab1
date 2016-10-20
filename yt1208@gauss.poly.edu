@@ -3,7 +3,6 @@
 #include <vector>
 #include <bitset>
 #include <fstream>
-#include <math.h>
 
 using namespace std;
 #define ADDU 1
@@ -12,17 +11,6 @@ using namespace std;
 #define OR  5
 #define NOR 7
 #define MemSize 65536 // memory size, in reality, the memory size should be 2^32, but for this lab, for the space resaon, we keep it as this large number, but the memory is still 32-bit addressable.
-
-	
-long to_long32(bitset<32> &input){
-	long output = - input[31] *pow(2,32) + input.to_ulong();
-	return output;
-}
-
-long to_long16(bitset<16> &input){
-	long output = - input[15] *pow(2,16) + input.to_ulong();
-	return output;
-}		
 
 class RF {
 
@@ -77,20 +65,15 @@ public:
 		switch (ALUOP.to_ulong()) {
 
 		case ADDU:
-			ALUresult = -oprand1[31]*pow(2,32)+oprand1.to_ulong() +
-					-oprand2[31]*pow(2,32) + oprand2.to_ulong();break;
+			ALUresult = oprand1.to_ulong() + oprand2.to_ulong();break;
 		case SUBU:
-			-oprand1[31]*pow(2,32)+oprand1.to_ulong() -
-					(-oprand2[31]*pow(2,32) + oprand2.to_ulong());break;
+			ALUresult = oprand1.to_ulong() - oprand2.to_ulong();break;
 		case AND:
 			ALUresult = oprand1 & oprand2;break;
-
 		case OR:
 			ALUresult = oprand1 | oprand2;break;
-
 		case NOR:
 			ALUresult = oprand1 ^ oprand2;break;
-
 		default:
 			break;
 		}
@@ -207,113 +190,108 @@ int main()
 	ALU myALU;
 	INSMem myInsMem;
 	DataMem myDataMem;
-
-	bitset < 32 > addressExample = 0;//The address of Instruction
-    bitset < 32 > insExample = 0;	//The instruction
-	unsigned pass=0; //The number of circles
-	bitset<6> opcode = 0; //Type code
+	bitset < 32 > addressExample = 0; bitset < 32 > insExample = 0;
+	bitset<6> opcode = 0;
 	while (1)
 	{
 		// Fetch
 		insExample = myInsMem.ReadMemory(addressExample);
 		addressExample = addressExample.to_ulong() + 4;
-		cout<<endl<<"The "<<pass++<<" instruction"<<endl;
-		cout<<"The Instruction Address is "<<addressExample.to_ulong()<<endl;
-
+		// If current insturciton is "11111111111111111111111111111111", then break;
+		if (insExample.to_ulong() == 4294967295) break;
 		// decode(Read RF)
 		opcode = (insExample.to_ulong() & 0xFC000000)>>26;
 		cout<<"instrcution is "<<insExample<<endl<<"opcode is "<<opcode<<endl;
 
-		switch (opcode.to_ulong()){ //Judge operation type by opcode
-		case 0: // R type
+		switch (opcode.to_ulong()){
+		case 0:
 		{
 			bitset<3> func = insExample.to_ulong() & 0x7;
 			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
 			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
 			bitset<5> rd = (insExample.to_ulong() & 0x0000F800)>>11;
 			myALU.ALUOperation(func, myRF.Registers[rs.to_ulong()], myRF.Registers[rt.to_ulong()]);
-			cout<<"It's R type and function code is "<<func.to_ulong()<<endl
-			    <<"rs is Register["<<rs.to_ulong()<<"]"
-                <<",rt is Register["<<rt.to_ulong()<<"]"
-			    <<",rd is Register["<< rd.to_ulong()<<"]"<<endl;
+			cout<<"It's R type and function code is "<<func.to_ulong()
+			    <<" ,rs is "<<rs.to_ulong()
+                <<" ,rt is "<<rt.to_ulong()
+			    <<" ,rd is "<< rd.to_ulong()<<endl;
 
 			myRF.Registers[rd.to_ulong()] = myALU.ALUresult;
 
-			cout<<"Calculation Result in Register["<<rd.to_ulong()<<"] is "<<myALU.ALUresult.to_ulong()<<endl;
+			cout<<"Result is "<<myALU.ALUresult.to_ulong()<<endl;
 			break;
 		}
-		case 9://Addiu
+		case 9:
 		{
 			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
 			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
 			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
-			
-			cout<<"It's addiu operation"
-			    <<" ,rs is "<<rs.to_ulong()
-                <<" ,rt is "<<rt.to_ulong()
-			    <<" ,im is "<< imm.to_ulong()<<endl;
+			bitset<32> exImm = 0;
+			if (imm[15])
+				exImm = imm.to_ulong() + 0x11110000;
+			else
+				exImm = imm.to_ulong() ;
 
-			myRF.Registers[rt.to_ulong()] = to_long32(myRF.Registers[rs.to_ulong()]) + to_long16(imm);
-			cout<<"Result is Register["<<rt.to_ulong()<<"]="<<myRF.Registers[rt.to_ulong()]<<endl;
+			myRF.Registers[rt.to_ulong()] = myRF.Registers[rs.to_ulong()].to_ulong() + exImm.to_ulong();
 			break;
 		}
-		case 4://beq
+		case 4:
 		{
-			cout<<"It's beq operation"<<endl;
 			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
 			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
-			bitset<18> imm = (insExample.to_ulong() & 0x0000FFFF)<<2;
-
-			if(rs==rt){
-				addressExample = addressExample.to_ulong() - pow(2,18) * imm[17] + imm.to_ulong();
-				cout<<"rs==rt so beq to"<<endl<<addressExample.to_ulong();
-			}
-			else
-				cout<<"No beq"<<endl;
-
+			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
+			bitset<32> exImm = 0;
+			exImm = imm.to_ulong();
+			if(rs==rt)
+				addressExample = addressExample.to_ulong() + 4 + exImm.to_ulong();
 			break;
 		}
-		case 2://j
+		case 2:
 		{
-			cout<<"It's j operation"<<endl;
-			bitset<28> imm = insExample.to_ulong() & 0x03FFFFFF;
+			bitset<26> imm = insExample.to_ulong() & 0x03FFFFFF;
 			bitset<32> exImm = (addressExample.to_ulong() + 4) & 0xF0000000;		
 			           exImm = exImm.to_ulong() + (imm<<2).to_ulong();
-			addressExample = exImm.to_ulong() - 4;	
-			cout<<"Jump to "<<addressExample<<endl;	
+			addressExample = exImm;			
 			break;
 		}	
-		case 35://lw
+		case 35:
 		{
-			cout<<"It's lw operation"<<endl;
 			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
 			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
 			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
-
-			myRF.Registers[rt.to_ulong()] = myDataMem.MemoryAccess(to_long32(myRF.Registers[rs.to_ulong()]) + to_long16(imm), 0, 1, 0);
-
-			cout<<"load Memory["<<to_long32(myRF.Registers[rs.to_ulong()]) + to_long16(imm)<<"] to "
-				<<"Register["<<rt.to_ulong()<<"]"<<endl;
+			bitset<32> exImm = 0;
+			if (imm[15])
+				exImm = imm.to_ulong() + 0x11110000;
+			else
+				exImm = imm.to_ulong() ;
+			myRF.Registers[rt.to_ulong()] = myDataMem.MemoryAccess(myRF.Registers[rs.to_ulong()].to_ulong() + 
+									       exImm.to_ulong(), 0, 1, 0);
 			break;
 		}
-		case 43://sw
+		case 43:
 		{
-			cout<<"It's sw operation"<<endl;
 			bitset<5> rs = (insExample.to_ulong() & 0x03E00000)>>21;
 			bitset<5> rt = (insExample.to_ulong() & 0x001F0000)>>16;
 			bitset<16> imm = insExample.to_ulong() & 0x0000FFFF;
-
-			myDataMem.MemoryAccess(to_long32(myRF.Registers[rs.to_ulong()]) + to_long16(imm), 
-								   to_long32(myRF.Registers[rt.to_ulong()]), 0, 1) ;
-
-			cout<<"save Register["<<rt.to_ulong()<<"] to "
-				<<"Memory["<<to_long32(myRF.Registers[rs.to_ulong()]) + to_long16(imm)<<"]"<<endl;
+			bitset<32> exImm = 0;
+			if (imm[15])
+				exImm = imm.to_ulong() + 0x11110000;
+			else
+				exImm = imm.to_ulong() ;
+			cout<<myRF.Registers[rs.to_ulong()].to_ulong()<<"    "<<exImm.to_ulong()<<"    "<<myRF.Registers[rt.to_ulong()].to_ulong()<<endl;
+			myDataMem.MemoryAccess(myRF.Registers[rs.to_ulong()].to_ulong() + exImm.to_ulong(), 
+								   myRF.Registers[rt.to_ulong()].to_ulong(), 0, 1) ;
 			break;
 		}		
 
-		default: cout<<"Calculation Haut"<<endl; return 0;
+		default: break;
 		
 		}
+		// Execute
+
+		// Read/Write Mem
+
+		// Write back to RF
 
 		myRF.OutputRF(); // dump RF; 
 		cout << endl;   
